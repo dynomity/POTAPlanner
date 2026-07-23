@@ -18,7 +18,7 @@ AppSupportURL={#MyAppURL}
 DefaultDirName={autopf}\POTA Planner by VA6DM
 DefaultGroupName=POTA Planner by VA6DM
 DisableProgramGroupPage=yes
-OutputDir=..\..\release\installer
+OutputDir=..\release\installer
 OutputBaseFilename=POTAPlanner_by_VA6DM_Setup_v1.0.0
 Compression=lzma2
 SolidCompression=yes
@@ -28,6 +28,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 UninstallDisplayName={#MyAppName}
+SetupIconFile=..\Assets\POTAPlanner.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -44,4 +45,3 @@ Name: "{autodesktop}\POTA Planner by VA6DM"; Filename: "{app}\{#MyAppExeName}"; 
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch POTA Planner by VA6DM"; Flags: nowait postinstall skipifsilent
-

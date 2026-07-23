@@ -25,6 +25,16 @@ public class CsvService
 
         return csv.GetRecords<Park>().ToList();
     }
+
+    public void SaveParks(string filename, IEnumerable<Park> parks)
+    {
+        using var writer = new StreamWriter(filename);
+        var config = new CsvConfiguration(CultureInfo.InvariantCulture);
+        using var csv = new CsvWriter(writer, config);
+
+        csv.Context.RegisterClassMap<ParkMap>();
+        csv.WriteRecords(parks);
+    }
 }
 
 public sealed class ParkMap : ClassMap<Park>
