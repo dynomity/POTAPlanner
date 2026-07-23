@@ -151,6 +151,8 @@
                             <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="100"/>
                             <DataGridTextColumn Header="Park" Binding="{Binding Name}" Width="*"/>
                             <DataGridTextColumn Header="Activations" Binding="{Binding Activations}" Width="85"/>
+                            <DataGridTextColumn Header="From Start" Binding="{Binding DistanceFromStart}" Width="95"/>
+                            <DataGridTextColumn Header="To Destination" Binding="{Binding DistanceToDestination}" Width="105"/>
                             <DataGridTextColumn Header="From Route" Binding="{Binding DistanceFromRoute}" Width="95"/>
                         </DataGrid.Columns>
                     </DataGrid>

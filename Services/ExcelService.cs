@@ -72,7 +72,7 @@ public class ExcelService
         var ws = workbook.Worksheets.Add("Route Plan");
 
         ws.Cell(1, 1).Value = "POTA Planner Route Plan";
-        ws.Range(1, 1, 1, 6).Merge();
+        ws.Range(1, 1, 1, 10).Merge();
         ws.Cell(1, 1).Style.Font.Bold = true;
         ws.Cell(1, 1).Style.Font.FontSize = 16;
 
@@ -98,9 +98,11 @@ public class ExcelService
         ws.Cell(headerRow, 3).Value = "Name";
         ws.Cell(headerRow, 4).Value = "Grid";
         ws.Cell(headerRow, 5).Value = "Activations";
-        ws.Cell(headerRow, 6).Value = "From Route";
-        ws.Cell(headerRow, 7).Value = "Latitude";
-        ws.Cell(headerRow, 8).Value = "Longitude";
+        ws.Cell(headerRow, 6).Value = "From Start";
+        ws.Cell(headerRow, 7).Value = "To Destination";
+        ws.Cell(headerRow, 8).Value = "From Route";
+        ws.Cell(headerRow, 9).Value = "Latitude";
+        ws.Cell(headerRow, 10).Value = "Longitude";
 
         int row = headerRow + 1;
         int stopNumber = 1;
@@ -112,20 +114,24 @@ public class ExcelService
             ws.Cell(row, 3).Value = park.Name;
             ws.Cell(row, 4).Value = park.Grid;
             ws.Cell(row, 5).Value = park.Activations;
-            ws.Cell(row, 6).Value = stop.DistanceFromRouteKm;
+            ws.Cell(row, 6).Value = stop.RoutePositionKm;
             ws.Cell(row, 6).Style.NumberFormat.Format = "0.0 \"km\"";
-            ws.Cell(row, 7).Value = park.Latitude;
-            ws.Cell(row, 8).Value = park.Longitude;
+            ws.Cell(row, 7).Value = Math.Max(0, stop.RouteDistanceKm - stop.RoutePositionKm);
+            ws.Cell(row, 7).Style.NumberFormat.Format = "0.0 \"km\"";
+            ws.Cell(row, 8).Value = stop.DistanceFromRouteKm;
+            ws.Cell(row, 8).Style.NumberFormat.Format = "0.0 \"km\"";
+            ws.Cell(row, 9).Value = park.Latitude;
+            ws.Cell(row, 10).Value = park.Longitude;
             row++;
         }
 
-        var header = ws.Range(headerRow, 1, headerRow, 8);
+        var header = ws.Range(headerRow, 1, headerRow, 10);
         header.Style.Font.Bold = true;
         header.Style.Fill.BackgroundColor = XLColor.LightSteelBlue;
 
         if (routeStops.Count > 0)
         {
-            var table = ws.Range(headerRow, 1, row - 1, 8).CreateTable();
+            var table = ws.Range(headerRow, 1, row - 1, 10).CreateTable();
             table.Theme = XLTableTheme.TableStyleMedium2;
         }
 

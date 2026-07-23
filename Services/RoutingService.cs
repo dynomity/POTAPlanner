@@ -63,7 +63,8 @@ public sealed class RoutingService
         {
             Park = park,
             DistanceFromRouteKm = nearest.DistanceKm,
-            RoutePositionKm = nearest.RoutePositionKm
+            RoutePositionKm = nearest.RoutePositionKm,
+            RouteDistanceKm = route.DistanceKm
         };
     }
 

@@ -240,6 +240,8 @@ public partial class MainWindow : Window
             $"Compiled: {compileDate}\n\n" +
             "Created by: VA6DM\n" +
             "Email: va6dm@dmnet.ca\n\n" +
+            "Copyright © 2026 VA6DM\n" +
+            "Licensed under the GNU General Public License v3.0 or later.\n\n" +
             $"Parks data: {_parkDataService.GetDataSourceDescription()}\n" +
             "Map data: OpenStreetMap\n" +
             "Park data: Parks on the Air",
