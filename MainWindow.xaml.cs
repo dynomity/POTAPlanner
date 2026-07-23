@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Data;
+using System.Linq;
 
 namespace POTAPlanner;
 
@@ -15,6 +16,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<Park> _parks = new();
 
     private readonly CollectionViewSource _viewSource = new();
+
+    private readonly ExcelService _excelService = new();
 
     public MainWindow()
     {
@@ -98,6 +101,51 @@ public partial class MainWindow : Window
             MessageBox.Show(
                 "Unable to open Google Maps.",
                 "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        var parks = _viewSource.View.Cast<Park>().ToList();
+
+        if (parks.Count == 0)
+        {
+            MessageBox.Show(
+                "There are no parks to export.",
+                "Export Excel",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            DefaultExt = "xlsx",
+            FileName = $"POTA_Parks_{DateTime.Now:yyyy-MM-dd}.xlsx"
+        };
+
+        if (dialog.ShowDialog() != true)
+            return;
+
+        try
+        {
+            _excelService.Export(dialog.FileName, parks);
+
+            MessageBox.Show(
+                $"Successfully exported {parks.Count} parks.",
+                "Export Complete",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                ex.Message,
+                "Export Failed",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }

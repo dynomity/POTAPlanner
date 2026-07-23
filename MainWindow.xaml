@@ -24,29 +24,40 @@
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="10"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="25"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
 
                 <Button Name="OpenButton"
-                        Width="120"
-                        Height="34"
-                        Click="OpenButton_Click">
+            Grid.Column="0"
+            Width="120"
+            Height="34"
+            Click="OpenButton_Click">
                     Open CSV
                 </Button>
 
-                <TextBlock Grid.Column="2"
-                           VerticalAlignment="Center"
-                           FontWeight="Bold"
-                           Text="Search:"/>
+                <Button Name="ExportButton"
+            Grid.Column="2"
+            Width="120"
+            Height="34"
+            Click="ExportButton_Click">
+                    Export Excel
+                </Button>
 
-                <TextBox Grid.Column="3"
-                         Name="SearchBox"
-                         Margin="10,0,0,0"
-                         Height="30"
-                         VerticalContentAlignment="Center"
-                         TextChanged="SearchBox_TextChanged"/>
+                <TextBlock Grid.Column="4"
+               VerticalAlignment="Center"
+               FontWeight="Bold"
+               Text="Search:"/>
+
+                <TextBox Grid.Column="5"
+             Name="SearchBox"
+             Margin="10,0,0,0"
+             Height="30"
+             VerticalContentAlignment="Center"
+             TextChanged="SearchBox_TextChanged"/>
 
             </Grid>
 
