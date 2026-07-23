@@ -17,4 +17,10 @@
     <PackageReference Include="RestSharp" Version="114.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Data\Canada (CA).csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
