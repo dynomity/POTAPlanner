@@ -7,7 +7,7 @@ namespace POTAPlanner.Services;
 
 public sealed class PotaApiService
 {
-    private const string CanadaParksUrl = "https://api.pota.app/location/parks/CA";
+    private const string CanadaParksUrl = "https://api.pota.app/program/parks/CA";
     private static readonly HttpClient Client = CreateHttpClient();
 
     public async Task<List<Park>> DownloadCanadaParksAsync()

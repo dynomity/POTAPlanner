@@ -11,6 +11,8 @@ using POTAPlanner.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -225,6 +227,26 @@ public partial class MainWindow : Window
     }
 
     private void ZoomAllButton_Click(object sender, RoutedEventArgs e) => ZoomToAllParks();
+
+    private void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        string version = assembly.GetName().Version?.ToString(3) ?? "Unknown";
+        string compileDate = File.GetLastWriteTime(assembly.Location).ToString("yyyy-MM-dd HH:mm");
+
+        MessageBox.Show(
+            $"POTA Planner by VA6DM\n\n" +
+            $"Version: {version}\n" +
+            $"Compiled: {compileDate}\n\n" +
+            "Created by: VA6DM\n" +
+            "Email: va6dm@dmnet.ca\n\n" +
+            $"Parks data: {_parkDataService.GetDataSourceDescription()}\n" +
+            "Map data: OpenStreetMap\n" +
+            "Park data: Parks on the Air",
+            "About POTA Planner by VA6DM",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
 
     private async void PlanRouteButton_Click(object sender, RoutedEventArgs e)
     {
