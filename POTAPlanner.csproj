@@ -6,6 +6,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <Version>1.4.3</Version>
+    <AssemblyVersion>1.4.3.0</AssemblyVersion>
+    <FileVersion>1.4.3.0</FileVersion>
+    <Product>POTA Planner by VA6DM</Product>
+    <Company>VA6DM</Company>
+    <Authors>VA6DM</Authors>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +21,12 @@
     <PackageReference Include="Mapsui.Wpf" Version="5.1.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="RestSharp" Version="114.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Data\Canada (CA).csv">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
