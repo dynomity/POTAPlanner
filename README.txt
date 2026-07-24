@@ -1,4 +1,4 @@
-POTA Planner by VA6DM v1.0.0
+POTA Planner by VA6DM v1.1.0
 
 Quick start
 1. Run POTAPlanner.exe.

@@ -20,6 +20,10 @@ using System.Windows.Data;
 namespace POTAPlanner;
 
 internal enum FilterMode { All, NeverActivated, Rare }
+internal sealed record ProvinceOption(string Code, string Name)
+{
+    public override string ToString() => $"{Name} ({Code})";
+}
 
 public partial class MainWindow : Window
 {
@@ -30,12 +34,14 @@ public partial class MainWindow : Window
     private readonly PotaApiService _potaApiService = new();
     private readonly ObservableCollection<Park> _parks = new();
     private readonly ObservableCollection<RouteStop> _routeStops = new();
+    private readonly ObservableCollection<ProvinceOption> _provinceOptions = new();
     private readonly CollectionViewSource _viewSource = new();
     private readonly Map _map = new();
     private readonly MemoryLayer _parksLayer = new("Parks") { Style = null };
     private readonly MemoryLayer _routeLayer = new("Planned Route") { Style = null };
     private readonly MemoryLayer _selectedParkLayer = new("Selected Park") { Style = null };
     private readonly HashSet<string> _plannedReferences = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _selectedProvinceCodes = new(StringComparer.OrdinalIgnoreCase);
     private FilterMode _filterMode = FilterMode.All;
     private bool _routePlanningMode;
     private Park? _selectedPark;
@@ -48,6 +54,7 @@ public partial class MainWindow : Window
         _viewSource.Source = _parks;
         ParksGrid.ItemsSource = _viewSource.View;
         RouteStopsGrid.ItemsSource = _routeStops;
+        ProvinceListBox.ItemsSource = _provinceOptions;
 
         _map.Layers.Add(OpenStreetMap.CreateTileLayer());
         _map.Layers.Add(_routeLayer);
@@ -168,6 +175,7 @@ public partial class MainWindow : Window
         foreach (var park in parks.OrderBy(park => park.Reference))
             _parks.Add(park);
 
+        PopulateProvinceSelector();
         ClearRoute();
         ApplyFilter();
         ParksGrid.SelectedItem = null;
@@ -200,36 +208,89 @@ public partial class MainWindow : Window
                 || park.Grid.Contains(search, StringComparison.OrdinalIgnoreCase);
 
             bool isPlannedStop = !_routePlanningMode || _plannedReferences.Contains(park.Reference);
-            return matchesFilter && matchesSearch && isPlannedStop;
+            return matchesFilter && matchesSearch && isPlannedStop && MatchesSelectedProvinces(park);
         };
 
         _viewSource.View.Refresh();
+        RebuildParkMarkers();
         string mode = _routePlanningMode ? " planned stops" : " parks";
         StatusText.Text = $"Showing {_viewSource.View.Cast<object>().Count():N0}{mode} of {_parks.Count:N0} parks";
     }
 
     private void AllButton_Click(object sender, RoutedEventArgs e)
     {
+        ClearParkSelection();
+        NeverButton.IsChecked = false;
+        RareButton.IsChecked = false;
         _filterMode = FilterMode.All;
         ApplyFilter();
     }
 
     private void NeverButton_Click(object sender, RoutedEventArgs e)
     {
-        _filterMode = FilterMode.NeverActivated;
+        ClearParkSelection();
+        if (NeverButton.IsChecked == true)
+        {
+            RareButton.IsChecked = false;
+            _filterMode = FilterMode.NeverActivated;
+        }
+        else
+        {
+            _filterMode = FilterMode.All;
+        }
+
         ApplyFilter();
     }
 
     private void RareButton_Click(object sender, RoutedEventArgs e)
     {
-        _filterMode = FilterMode.Rare;
+        ClearParkSelection();
+        if (RareButton.IsChecked == true)
+        {
+            NeverButton.IsChecked = false;
+            _filterMode = FilterMode.Rare;
+        }
+        else
+        {
+            _filterMode = FilterMode.All;
+        }
+
         ApplyFilter();
     }
 
-    private void ZoomAllButton_Click(object sender, RoutedEventArgs e) => ZoomToAllParks();
+    private void ProvinceButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        ProvincePopup.IsOpen = !ProvincePopup.IsOpen;
+    }
+
+    private void AllProvincesButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        ProvinceListBox.SelectedItems.Clear();
+        ProvincePopup.IsOpen = false;
+    }
+
+    private void ProvinceListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ClearParkSelection();
+        _selectedProvinceCodes.Clear();
+        foreach (ProvinceOption province in ProvinceListBox.SelectedItems)
+            _selectedProvinceCodes.Add(province.Code);
+
+        UpdateProvinceButtonText();
+        ApplyFilter();
+    }
+
+    private void ZoomAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        ZoomToAllParks();
+    }
 
     private void AboutButton_Click(object sender, RoutedEventArgs e)
     {
+        ClearParkSelection();
         var assembly = Assembly.GetExecutingAssembly();
         string version = assembly.GetName().Version?.ToString(3) ?? "Unknown";
         string compileDate = File.GetLastWriteTime(assembly.Location).ToString("yyyy-MM-dd HH:mm");
@@ -394,13 +455,16 @@ public partial class MainWindow : Window
 
         foreach (var park in _parks)
         {
+            if (!_routePlanningMode && !MatchesSelectedProvinces(park))
+                continue;
+
             var position = ToMapPoint(park);
             var feature = new PointFeature(position)
             {
                 ["Reference"] = park.Reference
             };
 
-            feature.Styles.Add(CreateParkMarkerStyle(!_routePlanningMode || _plannedReferences.Contains(park.Reference)));
+            feature.Styles.Add(CreateParkMarkerStyle(GetParkMarkerColor(park)));
             features.Add(feature);
         }
 
@@ -447,10 +511,28 @@ public partial class MainWindow : Window
             _map.Navigator.ZoomToBox(extent, MBoxFit.Fit, 300);
     }
 
-    private static SymbolStyle CreateParkMarkerStyle(bool isPlannedStop) => new()
+    private Color GetParkMarkerColor(Park park)
+    {
+        if (_routePlanningMode && _plannedReferences.Contains(park.Reference))
+            return Color.Blue;
+
+        if (_filterMode == FilterMode.NeverActivated
+            && park.Activations == 0
+            && MatchesSelectedProvinces(park))
+            return Color.ForestGreen;
+
+        if (_filterMode == FilterMode.Rare
+            && park.Activations <= 5
+            && MatchesSelectedProvinces(park))
+            return Color.Gold;
+
+        return _routePlanningMode ? Color.Gray : Color.Blue;
+    }
+
+    private static SymbolStyle CreateParkMarkerStyle(Color color) => new()
     {
         SymbolScale = 0.7,
-        Fill = new Brush(isPlannedStop ? Color.Blue : Color.Gray),
+        Fill = new Brush(color),
         Outline = new Pen(Color.White, 1)
     };
 
@@ -472,9 +554,16 @@ public partial class MainWindow : Window
         if (_parks.Count == 0)
             return;
 
-        var points = _parks
+        var zoomParks = _routePlanningMode && _routeStops.Count > 0
+            ? _routeStops.Select(stop => stop.Park)
+            : _parks.Where(MatchesSelectedProvinces);
+
+        var points = zoomParks
             .Select(ToMapPoint)
             .ToList();
+
+        if (points.Count == 0)
+            return;
 
         double minX = points.Min(point => point.X);
         double minY = points.Min(point => point.Y);
@@ -531,6 +620,13 @@ public partial class MainWindow : Window
             ZoomToPark(park);
     }
 
+    private void ClearParkSelection()
+    {
+        ParksGrid.SelectedItem = null;
+        RouteStopsGrid.SelectedItem = null;
+        SetSelectedPark(null, zoomToPark: false);
+    }
+
     private void SetRouteStops(IEnumerable<RouteStop> stops)
     {
         _routeStops.Clear();
@@ -542,6 +638,62 @@ public partial class MainWindow : Window
 
     private void UpdateRouteStopsHeader() =>
         RouteStopsGroup.Header = $"Route Stops ({_routeStops.Count:N0})";
+
+    private void PopulateProvinceSelector()
+    {
+        _provinceOptions.Clear();
+        foreach (string code in _parks
+                     .Select(GetProvinceCode)
+                     .Where(code => !string.IsNullOrWhiteSpace(code))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(code => GetProvinceName(code), StringComparer.OrdinalIgnoreCase))
+        {
+            _provinceOptions.Add(new ProvinceOption(code, GetProvinceName(code)));
+        }
+
+        _selectedProvinceCodes.Clear();
+        ProvinceListBox.SelectedItems.Clear();
+        UpdateProvinceButtonText();
+    }
+
+    private bool MatchesSelectedProvinces(Park park) =>
+        _selectedProvinceCodes.Count == 0 || _selectedProvinceCodes.Contains(GetProvinceCode(park));
+
+    private static string GetProvinceCode(Park park)
+    {
+        string location = park.LocationDescription?.Trim() ?? string.Empty;
+        return location.StartsWith("CA-", StringComparison.OrdinalIgnoreCase) && location.Length >= 5
+            ? location[3..]
+            : string.Empty;
+    }
+
+    private static string GetProvinceName(string code) => code.ToUpperInvariant() switch
+    {
+        "AB" => "Alberta",
+        "BC" => "British Columbia",
+        "MB" => "Manitoba",
+        "NB" => "New Brunswick",
+        "NL" => "Newfoundland and Labrador",
+        "NS" => "Nova Scotia",
+        "NT" => "Northwest Territories",
+        "NU" => "Nunavut",
+        "ON" => "Ontario",
+        "PE" => "Prince Edward Island",
+        "QC" => "Quebec",
+        "SK" => "Saskatchewan",
+        "YT" => "Yukon",
+        _ => code
+    };
+
+    private void UpdateProvinceButtonText()
+    {
+        ProvinceButton.Content = _selectedProvinceCodes.Count switch
+        {
+            0 => "Provinces: All Canada",
+            1 => $"Province: {GetProvinceName(_selectedProvinceCodes.Single())}",
+            _ => $"Provinces: {_selectedProvinceCodes.Count} selected"
+        };
+    }
 
     private static void OpenGoogleMaps(Park park)
     {

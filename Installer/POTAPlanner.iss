@@ -2,11 +2,11 @@
 ; Compile with Inno Setup 6 after publishing the release build.
 
 #define MyAppName "POTA Planner by VA6DM"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "VA6DM"
 #define MyAppURL "mailto:va6dm@dmnet.ca"
 #define MyAppExeName "POTAPlanner.exe"
-#define MyPublishDir "..\release\POTAPlanner_v1.0.0"
+#define MyPublishDir "..\release\POTAPlanner_v1.1.0"
 
 [Setup]
 AppId={{0C3727AF-BBF7-4B8F-982D-1B4B12A8800C}
@@ -19,7 +19,7 @@ DefaultDirName={autopf}\POTA Planner by VA6DM
 DefaultGroupName=POTA Planner by VA6DM
 DisableProgramGroupPage=yes
 OutputDir=..\release\installer
-OutputBaseFilename=POTAPlanner_by_VA6DM_Setup_v1.0.0
+OutputBaseFilename=POTAPlanner_by_VA6DM_Setup_v1.1.0
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
