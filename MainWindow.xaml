@@ -201,14 +201,14 @@
                           SelectionChanged="ParksGrid_SelectionChanged"
                           MouseDoubleClick="ParksGrid_MouseDoubleClick">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="110"/>
+                        <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="72"/>
                         <DataGridTextColumn Header="Park Name" Binding="{Binding Name}" Width="*"/>
-                        <DataGridTextColumn Header="Grid" Binding="{Binding Grid}" Width="90"/>
-                        <DataGridTextColumn Header="Activations" Binding="{Binding Activations}" Width="95"/>
-                        <DataGridTextColumn Header="QSOs" Binding="{Binding QSOs}" Width="90"/>
-                        <DataGridTextColumn Header="Attempts" Binding="{Binding Attempts}" Width="90"/>
-                        <DataGridTextColumn Header="Latitude" Binding="{Binding Latitude,StringFormat=F5}" Width="110"/>
-                        <DataGridTextColumn Header="Longitude" Binding="{Binding Longitude,StringFormat=F5}" Width="110"/>
+                        <DataGridTextColumn Header="Grid" Binding="{Binding Grid}" Width="68"/>
+                        <DataGridTextColumn Header="Activations" Binding="{Binding Activations}" Width="78"/>
+                        <DataGridTextColumn Header="QSOs" Binding="{Binding QSOs}" Width="62"/>
+                        <DataGridTextColumn Header="Attempts" Binding="{Binding Attempts}" Width="70"/>
+                        <DataGridTextColumn Header="Latitude" Binding="{Binding Latitude,StringFormat=F5}" Width="92"/>
+                        <DataGridTextColumn Header="Longitude" Binding="{Binding Longitude,StringFormat=F5}" Width="92"/>
                     </DataGrid.Columns>
                 </DataGrid>
 

@@ -11,6 +11,7 @@ using POTAPlanner.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.Http;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -336,30 +337,76 @@ public partial class MainWindow : Window
                 RouteStartBox.Text,
                 RouteDestinationBox.Text,
                 corridorKm);
+            ApplyPlannedRoute(route, corridorKm);
+        }
+        catch (Exception ex) when (IsSecureConnectionFailure(ex))
+        {
+            var result = MessageBox.Show(
+                "This PC cannot validate the secure connection used for routing.\n\n"
+                + "Try Legacy Windows Compatibility Mode? It uses public mapping services without HTTPS, so use it only on a trusted network.\n\n"
+                + "The preferred fix is to correct the PC's date/time and install Windows certificate updates.",
+                "Secure connection unavailable",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
 
-            var stops = _routingService.FindStopsAlongRoute(route, _parks);
-            _activeRoute = route;
-            SetRouteStops(stops);
-            _plannedReferences.Clear();
-            foreach (var stop in stops)
-                _plannedReferences.Add(stop.Reference);
-            _routePlanningMode = true;
-            RebuildParkMarkers();
-            ApplyFilter();
-            UpdateParkDetails(_selectedPark);
-            DrawRoute(route);
+            if (result != MessageBoxResult.Yes)
+                return;
 
-            StatusText.Text = $"Route: {route.DistanceKm:N0} km, {route.DurationMinutes / 60d:N1} hours; {stops.Count:N0} parks within {corridorKm:N0} km of the route";
+            try
+            {
+                var route = await _routingService.PlanRouteAsync(
+                    RouteStartBox.Text,
+                    RouteDestinationBox.Text,
+                    corridorKm,
+                    useLegacyCompatibilityMode: true);
+                ApplyPlannedRoute(route, corridorKm);
+            }
+            catch (Exception compatibilityException)
+            {
+                MessageBox.Show(compatibilityException.GetBaseException().Message, "Unable to Plan Route", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "Unable to Plan Route", MessageBoxButton.OK, MessageBoxImage.Error);
+            var detail = ex.GetBaseException().Message;
+            var message = ex is HttpRequestException && detail.Contains("SSL", StringComparison.OrdinalIgnoreCase)
+                ? "Windows could not establish a secure connection to the online routing service.\n\n"
+                  + "Check that the computer's date and time are correct, then install the latest Windows updates (including certificate updates) and try again.\n\n"
+                  + $"Technical detail: {detail}"
+                : ex.Message;
+
+            MessageBox.Show(message, "Unable to Plan Route", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {
             PlanRouteButton.IsEnabled = true;
             PlanRouteButton.Content = "Plan Route";
         }
+    }
+
+    private void ApplyPlannedRoute(RoutePlan route, double corridorKm)
+    {
+        var stops = _routingService.FindStopsAlongRoute(route, _parks);
+        _activeRoute = route;
+        SetRouteStops(stops);
+        _plannedReferences.Clear();
+        foreach (var stop in stops)
+            _plannedReferences.Add(stop.Reference);
+        _routePlanningMode = true;
+        RebuildParkMarkers();
+        ApplyFilter();
+        UpdateParkDetails(_selectedPark);
+        DrawRoute(route);
+
+        StatusText.Text = $"Route: {route.DistanceKm:N0} km, {route.DurationMinutes / 60d:N1} hours; {stops.Count:N0} parks within {corridorKm:N0} km of the route";
+    }
+
+    private static bool IsSecureConnectionFailure(Exception exception)
+    {
+        var message = exception.ToString();
+        return message.Contains("SSL", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("certificate", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("authentication failed", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ClearRouteButton_Click(object sender, RoutedEventArgs e) => ClearRoute();
