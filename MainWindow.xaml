@@ -143,6 +143,8 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="10"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="20"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBlock VerticalAlignment="Center" FontWeight="Bold" Text="Start:"/>
@@ -153,6 +155,13 @@
                 <TextBox Name="RouteCorridorBox" Grid.Column="7" Margin="8,0,0,0" Height="30" VerticalContentAlignment="Center" Text="25"/>
                 <Button Name="PlanRouteButton" Grid.Column="9" Width="105" Height="30" Click="PlanRouteButton_Click">Plan Route</Button>
                 <Button Name="ClearRouteButton" Grid.Column="11" Width="90" Height="30" Click="ClearRouteButton_Click">Clear Route</Button>
+                <CheckBox Name="HideNonRouteParksToggle"
+                          Grid.Column="13"
+                          VerticalAlignment="Center"
+                          Content="Hide non-route parks"
+                          ToolTip="Hide gray parks from the map while planning a route. Turn this off to select and add another park."
+                          Checked="HideNonRouteParksToggle_Changed"
+                          Unchecked="HideNonRouteParksToggle_Changed"/>
             </Grid>
         </StackPanel>
 

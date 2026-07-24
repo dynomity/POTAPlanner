@@ -44,6 +44,7 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _selectedProvinceCodes = new(StringComparer.OrdinalIgnoreCase);
     private FilterMode _filterMode = FilterMode.All;
     private bool _routePlanningMode;
+    private bool _hideNonRouteParks;
     private Park? _selectedPark;
     private RoutePlan? _activeRoute;
 
@@ -363,9 +364,20 @@ public partial class MainWindow : Window
 
     private void ClearRouteButton_Click(object sender, RoutedEventArgs e) => ClearRoute();
 
+    private void HideNonRouteParksToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        _hideNonRouteParks = HideNonRouteParksToggle.IsChecked == true;
+        if (_hideNonRouteParks)
+            ClearParkSelection();
+
+        RebuildParkMarkers();
+    }
+
     private void ClearRoute()
     {
         _routePlanningMode = false;
+        _hideNonRouteParks = false;
+        HideNonRouteParksToggle.IsChecked = false;
         _activeRoute = null;
         _plannedReferences.Clear();
         _routeLayer.Features = Array.Empty<IFeature>();
@@ -404,20 +416,8 @@ public partial class MainWindow : Window
 
     private void AddToRouteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_activeRoute is null || _selectedPark is null || _plannedReferences.Contains(_selectedPark.Reference))
-            return;
-
-        var park = _selectedPark;
-        var stop = _routingService.CreateRouteStop(_activeRoute, park);
-        _plannedReferences.Add(stop.Reference);
-        SetRouteStops(_routeStops.Concat(new[] { stop }).ToList());
-        RebuildParkMarkers();
-        ApplyFilter();
-
-        ParksGrid.SelectedItem = null;
-        SetSelectedPark(null, zoomToPark: false);
-        DrawRoute(_activeRoute);
-        StatusText.Text = $"Added {park.Reference} to the planned route ({stop.DistanceFromRouteKm:N1} km from the route).";
+        if (_selectedPark is Park park)
+            AddParkToRoute(park);
     }
 
     private void ParkMap_Info(object? sender, MapInfoEventArgs e)
@@ -447,6 +447,36 @@ public partial class MainWindow : Window
             ParksGrid.SelectedItem = null;
             SetSelectedPark(park);
         }
+
+        if (_routePlanningMode && _activeRoute is not null && !_plannedReferences.Contains(park.Reference))
+        {
+            var stop = _routingService.CreateRouteStop(_activeRoute, park);
+            var result = MessageBox.Show(
+                $"{park.Reference} — {park.Name} is not in the planned route.\n\n" +
+                $"It is {stop.DistanceFromRouteKm:N1} km from the route. Add it anyway?",
+                "Add Park to Route",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+                AddParkToRoute(park);
+        }
+    }
+
+    private void AddParkToRoute(Park park)
+    {
+        if (_activeRoute is null || _plannedReferences.Contains(park.Reference))
+            return;
+
+        var stop = _routingService.CreateRouteStop(_activeRoute, park);
+        _plannedReferences.Add(stop.Reference);
+        SetRouteStops(_routeStops.Concat(new[] { stop }).ToList());
+        RebuildParkMarkers();
+        ApplyFilter();
+
+        ClearParkSelection();
+        DrawRoute(_activeRoute);
+        StatusText.Text = $"Added {park.Reference} to the planned route ({stop.DistanceFromRouteKm:N1} km from the route).";
     }
 
     private void RebuildParkMarkers()
@@ -456,6 +486,9 @@ public partial class MainWindow : Window
         foreach (var park in _parks)
         {
             if (!_routePlanningMode && !MatchesSelectedProvinces(park))
+                continue;
+
+            if (_routePlanningMode && _hideNonRouteParks && !_plannedReferences.Contains(park.Reference))
                 continue;
 
             var position = ToMapPoint(park);
@@ -474,7 +507,7 @@ public partial class MainWindow : Window
 
     private void UpdateSelectedMarker(Park? park)
     {
-        if (park is null)
+        if (park is null || (_routePlanningMode && _hideNonRouteParks && !_plannedReferences.Contains(park.Reference)))
         {
             _selectedParkLayer.Features = Array.Empty<IFeature>();
         }
