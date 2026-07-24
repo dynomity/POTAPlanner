@@ -772,8 +772,7 @@ public partial class MainWindow : Window
                     _routeStops,
                     RouteStartBox.Text,
                     RouteDestinationBox.Text,
-                    _activeRoute!.DistanceKm,
-                    _activeRoute.DurationMinutes);
+                    _activeRoute!);
 
                 MessageBox.Show($"Successfully exported {_routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
