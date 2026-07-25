@@ -490,12 +490,34 @@ public partial class MainWindow : Window
         if (RouteStopsGrid.SelectedItem is not RouteStop stop)
             return;
 
-        SelectPark(stop.Park);
+        // A route stop is also a park selection: show its details and make the
+        // route-specific action (Remove from Route) immediately available.
+        SetSelectedPark(stop.Park);
+
+        if (_viewSource.View.Cast<Park>().Any(candidate => candidate.Reference == stop.Reference))
+        {
+            ParksGrid.SelectedItem = stop.Park;
+            ParksGrid.ScrollIntoView(stop.Park);
+        }
     }
 
     private void ParksGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        SetSelectedPark(ParksGrid.SelectedItem as Park);
+        var park = ParksGrid.SelectedItem as Park;
+        SyncRouteStopSelection(park);
+        SetSelectedPark(park);
+    }
+
+    private void RouteStopsGrid_PreviewMouseRightButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (ItemsControl.ContainerFromElement(RouteStopsGrid, e.OriginalSource as DependencyObject) is DataGridRow row)
+            RouteStopsGrid.SelectedItem = row.Item;
+    }
+
+    private void RemoveRouteStopMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (RouteStopsGrid.SelectedItem is RouteStop stop)
+            RemoveParkFromRoute(stop.Park);
     }
 
     private void ParksGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -550,6 +572,8 @@ public partial class MainWindow : Window
             SetSelectedPark(park);
         }
 
+        SyncRouteStopSelection(park);
+
         if (_routePlanningMode && _activeRoute is not null && !_plannedReferences.Contains(park.Reference))
         {
             var stop = _routingService.CreateRouteStop(_activeRoute, park);
@@ -563,6 +587,19 @@ public partial class MainWindow : Window
             if (result == MessageBoxResult.Yes)
                 AddParkToRoute(park);
         }
+    }
+
+    private void SyncRouteStopSelection(Park? park)
+    {
+        RouteStop? matchingStop = park is null
+            ? null
+            : _routeStops.FirstOrDefault(stop => string.Equals(stop.Reference, park.Reference, StringComparison.OrdinalIgnoreCase));
+
+        if (!ReferenceEquals(RouteStopsGrid.SelectedItem, matchingStop))
+            RouteStopsGrid.SelectedItem = matchingStop;
+
+        if (matchingStop is not null)
+            RouteStopsGrid.ScrollIntoView(matchingStop);
     }
 
     private void AddParkToRoute(Park park)

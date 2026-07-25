@@ -4,9 +4,9 @@
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
         xmlns:mapsui="clr-namespace:Mapsui.UI.Wpf;assembly=Mapsui.UI.Wpf"
         Title="POTA Planner by VA6DM"
-        Height="760"
+        Height="840"
         Width="1400"
-        MinHeight="560"
+        MinHeight="620"
         MinWidth="1050">
 
     <DockPanel Margin="10">
@@ -244,7 +244,14 @@
                     <DataGrid Name="RouteStopsGrid"
                               AutoGenerateColumns="False"
                               IsReadOnly="True"
-                              SelectionChanged="RouteStopsGrid_SelectionChanged">
+                              SelectionChanged="RouteStopsGrid_SelectionChanged"
+                              PreviewMouseRightButtonDown="RouteStopsGrid_PreviewMouseRightButtonDown">
+                        <DataGrid.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Header="Remove from Route"
+                                          Click="RemoveRouteStopMenuItem_Click"/>
+                            </ContextMenu>
+                        </DataGrid.ContextMenu>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Reference" Binding="{Binding Reference}" Width="100"/>
                             <DataGridTextColumn Header="Park" Binding="{Binding Name}" Width="*"/>
@@ -270,6 +277,7 @@
                     BorderBrush="LightGray"
                     BorderThickness="1"
                     CornerRadius="4">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock FontSize="18" FontWeight="Bold" Margin="0,0,0,15" Text="Park Details"/>
 
@@ -314,6 +322,7 @@
                             IsEnabled="False"
                             Click="RemoveFromRouteButton_Click">Remove from Route</Button>
                 </StackPanel>
+                </ScrollViewer>
             </Border>
         </Grid>
     </DockPanel>
