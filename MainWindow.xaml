@@ -155,14 +155,34 @@
                 <TextBox Name="RouteCorridorBox" Grid.Column="7" Margin="8,0,0,0" Height="30" VerticalContentAlignment="Center" Text="25"/>
                 <Button Name="PlanRouteButton" Grid.Column="9" Width="105" Height="30" Click="PlanRouteButton_Click">Plan Route</Button>
                 <Button Name="ClearRouteButton" Grid.Column="11" Width="90" Height="30" Click="ClearRouteButton_Click">Clear Route</Button>
-                <CheckBox Name="HideNonRouteParksToggle"
+                <CheckBox Name="ShowNonRouteParksToggle"
                           Grid.Column="13"
                           VerticalAlignment="Center"
-                          Content="Hide non-route parks"
-                          ToolTip="Hide gray parks from the map while planning a route. Turn this off to select and add another park."
-                          Checked="HideNonRouteParksToggle_Changed"
-                          Unchecked="HideNonRouteParksToggle_Changed"/>
+                          Content="Show non-route parks"
+                          ToolTip="Show gray parks outside the planned route so you can select and add one."
+                          Checked="ShowNonRouteParksToggle_Changed"
+                          Unchecked="ShowNonRouteParksToggle_Changed"/>
             </Grid>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                <TextBlock VerticalAlignment="Center" FontWeight="Bold" Text="Callsign:"/>
+                <TextBox Name="CallsignBox"
+                         Width="100"
+                         Height="30"
+                         Margin="8,0,10,0"
+                         VerticalContentAlignment="Center"
+                         ToolTip="Your POTA activator callsign."
+                         Text="VA6DM"/>
+                <Button Name="CheckWorkedParksButton"
+                        Width="175"
+                        Height="30"
+                        ToolTip="Check the currently planned parks against this callsign's public POTA activation history."
+                        Click="CheckWorkedParksButton_Click">Check Worked Parks</Button>
+                <TextBlock Margin="12,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="DimGray"
+                           Text="Blue + ✓ = a planned park already activated by this callsign."/>
+            </StackPanel>
         </StackPanel>
 
         <Grid>
@@ -285,8 +305,14 @@
 
                     <Button Name="AddToRouteButton"
                             Height="34"
+                            Margin="0,0,0,8"
                             IsEnabled="False"
                             Click="AddToRouteButton_Click">Add to Route</Button>
+
+                    <Button Name="RemoveFromRouteButton"
+                            Height="34"
+                            IsEnabled="False"
+                            Click="RemoveFromRouteButton_Click">Remove from Route</Button>
                 </StackPanel>
             </Border>
         </Grid>

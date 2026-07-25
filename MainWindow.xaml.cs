@@ -45,7 +45,7 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _selectedProvinceCodes = new(StringComparer.OrdinalIgnoreCase);
     private FilterMode _filterMode = FilterMode.All;
     private bool _routePlanningMode;
-    private bool _hideNonRouteParks;
+    private bool _showNonRouteParks;
     private Park? _selectedPark;
     private RoutePlan? _activeRoute;
 
@@ -393,6 +393,8 @@ public partial class MainWindow : Window
         foreach (var stop in stops)
             _plannedReferences.Add(stop.Reference);
         _routePlanningMode = true;
+        _showNonRouteParks = false;
+        ShowNonRouteParksToggle.IsChecked = false;
         RebuildParkMarkers();
         ApplyFilter();
         UpdateParkDetails(_selectedPark);
@@ -411,10 +413,57 @@ public partial class MainWindow : Window
 
     private void ClearRouteButton_Click(object sender, RoutedEventArgs e) => ClearRoute();
 
-    private void HideNonRouteParksToggle_Changed(object sender, RoutedEventArgs e)
+    private async void CheckWorkedParksButton_Click(object sender, RoutedEventArgs e)
     {
-        _hideNonRouteParks = HideNonRouteParksToggle.IsChecked == true;
-        if (_hideNonRouteParks)
+        if (!_routePlanningMode || _routeStops.Count == 0)
+        {
+            MessageBox.Show("Plan a route first.", "Check Worked Parks", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        string callsign = CallsignBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(callsign))
+        {
+            MessageBox.Show("Enter your callsign first.", "Check Worked Parks", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        CheckWorkedParksButton.IsEnabled = false;
+        CheckWorkedParksButton.Content = "Checking…";
+        var progress = new Progress<string>(message => StatusText.Text = message);
+
+        try
+        {
+            var workedReferences = await _potaApiService.FindActivatedParkReferencesAsync(
+                callsign,
+                _routeStops.Select(stop => stop.Park),
+                progress);
+
+            foreach (var stop in _routeStops)
+                stop.Park.MyActivations = workedReferences.Contains(stop.Reference) ? 1 : 0;
+
+            RebuildParkMarkers();
+            StatusText.Text = $"Checked {callsign.ToUpperInvariant()}: {workedReferences.Count:N0} of {_routeStops.Count:N0} planned parks already activated.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Could not check POTA activation history.\n\n{ex.GetBaseException().Message}",
+                "Check Worked Parks",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            CheckWorkedParksButton.IsEnabled = true;
+            CheckWorkedParksButton.Content = "Check Worked Parks";
+        }
+    }
+
+    private void ShowNonRouteParksToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        _showNonRouteParks = ShowNonRouteParksToggle.IsChecked == true;
+        if (!_showNonRouteParks)
             ClearParkSelection();
 
         RebuildParkMarkers();
@@ -423,8 +472,8 @@ public partial class MainWindow : Window
     private void ClearRoute()
     {
         _routePlanningMode = false;
-        _hideNonRouteParks = false;
-        HideNonRouteParksToggle.IsChecked = false;
+        _showNonRouteParks = false;
+        ShowNonRouteParksToggle.IsChecked = false;
         _activeRoute = null;
         _plannedReferences.Clear();
         _routeLayer.Features = Array.Empty<IFeature>();
@@ -465,6 +514,12 @@ public partial class MainWindow : Window
     {
         if (_selectedPark is Park park)
             AddParkToRoute(park);
+    }
+
+    private void RemoveFromRouteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPark is Park park)
+            RemoveParkFromRoute(park);
     }
 
     private void ParkMap_Info(object? sender, MapInfoEventArgs e)
@@ -526,6 +581,32 @@ public partial class MainWindow : Window
         StatusText.Text = $"Added {park.Reference} to the planned route ({stop.DistanceFromRouteKm:N1} km from the route).";
     }
 
+    private void RemoveParkFromRoute(Park park)
+    {
+        if (_activeRoute is null || !_plannedReferences.Contains(park.Reference))
+            return;
+
+        var result = MessageBox.Show(
+            $"Remove {park.Reference} — {park.Name} from the planned route?",
+            "Remove Park from Route",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        var remainingStops = _routeStops
+            .Where(stop => !string.Equals(stop.Reference, park.Reference, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        _plannedReferences.Remove(park.Reference);
+        SetRouteStops(remainingStops);
+        RebuildParkMarkers();
+        ApplyFilter();
+        ClearParkSelection();
+        DrawRoute(_activeRoute);
+        StatusText.Text = $"Removed {park.Reference} from the planned route.";
+    }
+
     private void RebuildParkMarkers()
     {
         var features = new List<IFeature>();
@@ -535,7 +616,7 @@ public partial class MainWindow : Window
             if (!_routePlanningMode && !MatchesSelectedProvinces(park))
                 continue;
 
-            if (_routePlanningMode && _hideNonRouteParks && !_plannedReferences.Contains(park.Reference))
+            if (_routePlanningMode && !_showNonRouteParks && !_plannedReferences.Contains(park.Reference))
                 continue;
 
             var position = ToMapPoint(park);
@@ -544,7 +625,18 @@ public partial class MainWindow : Window
                 ["Reference"] = park.Reference
             };
 
-            feature.Styles.Add(CreateParkMarkerStyle(GetParkMarkerColor(park)));
+            bool isWorkedRouteStop = _routePlanningMode
+                && _plannedReferences.Contains(park.Reference)
+                && park.MyActivations > 0;
+
+            if (isWorkedRouteStop)
+            {
+                feature.Styles.Add(CreateWorkedRouteStopLabelStyle());
+            }
+            else
+            {
+                feature.Styles.Add(CreateParkMarkerStyle(GetParkMarkerColor(park)));
+            }
             features.Add(feature);
         }
 
@@ -554,7 +646,7 @@ public partial class MainWindow : Window
 
     private void UpdateSelectedMarker(Park? park)
     {
-        if (park is null || (_routePlanningMode && _hideNonRouteParks && !_plannedReferences.Contains(park.Reference)))
+        if (park is null || (_routePlanningMode && !_showNonRouteParks && !_plannedReferences.Contains(park.Reference)))
         {
             _selectedParkLayer.Features = Array.Empty<IFeature>();
         }
@@ -623,6 +715,15 @@ public partial class MainWindow : Window
         Outline = new Pen(Color.White, 2)
     };
 
+    private static LabelStyle CreateWorkedRouteStopLabelStyle() => new()
+    {
+        Text = "\u2714",
+        ForeColor = Color.Blue,
+        Font = new Font { FontFamily = "Segoe UI Symbol", Size = 18, Bold = true },
+        HorizontalAlignment = LabelStyle.HorizontalAlignmentEnum.Center,
+        VerticalAlignment = LabelStyle.VerticalAlignmentEnum.Center
+    };
+
     private void ZoomToPark(Park park)
     {
         var position = ToMapPoint(park);
@@ -688,6 +789,9 @@ public partial class MainWindow : Window
         AddToRouteButton.IsEnabled = _routePlanningMode
             && park is not null
             && !_plannedReferences.Contains(park.Reference);
+        RemoveFromRouteButton.IsEnabled = _routePlanningMode
+            && park is not null
+            && _plannedReferences.Contains(park.Reference);
     }
 
     private void SetSelectedPark(Park? park, bool zoomToPark = true)
@@ -790,6 +894,8 @@ public partial class MainWindow : Window
     private void ExportButton_Click(object sender, RoutedEventArgs e)
     {
         var parks = _viewSource.View.Cast<Park>().ToList();
+        // Export a snapshot of the stops that remain after any manual additions/removals.
+        var routeStops = _routeStops.ToList();
         bool exportRoute = _routePlanningMode && _activeRoute is not null;
 
         if (!exportRoute && parks.Count == 0)
@@ -816,12 +922,12 @@ public partial class MainWindow : Window
             {
                 _excelService.ExportRoute(
                     dialog.FileName,
-                    _routeStops,
+                    routeStops,
                     RouteStartBox.Text,
                     RouteDestinationBox.Text,
                     _activeRoute!);
 
-                MessageBox.Show($"Successfully exported {_routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show($"Successfully exported {routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
