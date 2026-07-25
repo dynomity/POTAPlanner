@@ -10,6 +10,7 @@ public sealed class RoutingService
 {
     private static readonly HttpClient Client = CreateHttpClient();
 
+    public async Task<RoutePlan> PlanRouteAsync(string startInput, string destinationInput, double maximumDistanceFromRouteKm)
     public async Task<RoutePlan> PlanRouteAsync(
         string startInput,
         string destinationInput,
@@ -19,6 +20,11 @@ public sealed class RoutingService
         if (maximumDistanceFromRouteKm <= 0)
             throw new ArgumentOutOfRangeException(nameof(maximumDistanceFromRouteKm), "Distance from route must be greater than zero.");
 
+        var start = await ResolveLocationAsync(startInput);
+        var destination = await ResolveLocationAsync(destinationInput);
+
+        string coordinates = string.Join(";", ToCoordinateString(start), ToCoordinateString(destination));
+        string url = $"https://router.project-osrm.org/route/v1/driving/{coordinates}?overview=full&geometries=geojson";
         var start = await ResolveLocationAsync(startInput, useLegacyCompatibilityMode);
         var destination = await ResolveLocationAsync(destinationInput, useLegacyCompatibilityMode);
 
@@ -69,6 +75,11 @@ public sealed class RoutingService
         {
             Park = park,
             DistanceFromRouteKm = nearest.DistanceKm,
+            RoutePositionKm = nearest.RoutePositionKm
+        };
+    }
+
+    private static async Task<RoutePoint> ResolveLocationAsync(string input)
             RoutePositionKm = nearest.RoutePositionKm,
             RouteDistanceKm = route.DistanceKm
         };
@@ -199,6 +210,7 @@ public sealed class RoutingService
 
     private static HttpClient CreateHttpClient()
     {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         // Explicitly enable the TLS versions supported by the public routing services.
         // This avoids relying on older Windows TLS defaults while preserving normal
         // certificate validation.
