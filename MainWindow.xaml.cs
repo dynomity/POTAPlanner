@@ -11,6 +11,7 @@ using POTAPlanner.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Net.Http;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -20,6 +21,10 @@ using System.Windows.Data;
 namespace POTAPlanner;
 
 internal enum FilterMode { All, NeverActivated, Rare }
+internal sealed record ProvinceOption(string Code, string Name)
+{
+    public override string ToString() => $"{Name} ({Code})";
+}
 
 public partial class MainWindow : Window
 {
@@ -30,6 +35,7 @@ public partial class MainWindow : Window
     private readonly PotaApiService _potaApiService = new();
     private readonly ObservableCollection<Park> _parks = new();
     private readonly ObservableCollection<RouteStop> _routeStops = new();
+    private readonly ObservableCollection<ProvinceOption> _provinceOptions = new();
     private readonly CollectionViewSource _viewSource = new();
     private readonly Map _map = new();
     private readonly MemoryLayer _parksLayer = new("Parks") { Style = null };
@@ -38,6 +44,10 @@ public partial class MainWindow : Window
     private readonly HashSet<string> _plannedReferences = new(StringComparer.OrdinalIgnoreCase);
     private FilterMode _filterMode = FilterMode.All;
     private bool _routePlanningMode;
+    private readonly HashSet<string> _selectedProvinceCodes = new(StringComparer.OrdinalIgnoreCase);
+    private FilterMode _filterMode = FilterMode.All;
+    private bool _routePlanningMode;
+    private bool _showNonRouteParks;
     private Park? _selectedPark;
     private RoutePlan? _activeRoute;
 
@@ -48,6 +58,7 @@ public partial class MainWindow : Window
         _viewSource.Source = _parks;
         ParksGrid.ItemsSource = _viewSource.View;
         RouteStopsGrid.ItemsSource = _routeStops;
+        ProvinceListBox.ItemsSource = _provinceOptions;
 
         _map.Layers.Add(OpenStreetMap.CreateTileLayer());
         _map.Layers.Add(_routeLayer);
@@ -126,6 +137,33 @@ public partial class MainWindow : Window
             _parkDataService.UpdateFromParks(parks, _csvService);
             LoadParksFromFile(_parkDataService.GetPreferredDataPath());
 
+
+            _parkDataService.UpdateFrom(dialog.FileName);
+            LoadParksFromFile(_parkDataService.GetPreferredDataPath());
+
+            MessageBox.Show(
+                $"Updated the local Canada dataset with {importedParks.Count:N0} parks.",
+                "Parks Data Updated",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Unable to Update Parks Data", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private async void UpdateFromPotaButton_Click(object sender, RoutedEventArgs e)
+    {
+        UpdateFromPotaButton.IsEnabled = false;
+        UpdateFromPotaButton.Content = "Updating…";
+
+        try
+        {
+            var parks = await _potaApiService.DownloadCanadaParksAsync();
+            _parkDataService.UpdateFromParks(parks, _csvService);
+            LoadParksFromFile(_parkDataService.GetPreferredDataPath());
+
             MessageBox.Show(
                 $"Updated the local Canada dataset with {parks.Count:N0} parks from POTA.",
                 "Parks Data Updated",
@@ -168,6 +206,11 @@ public partial class MainWindow : Window
         foreach (var park in parks.OrderBy(park => park.Reference))
             _parks.Add(park);
 
+
+        foreach (var park in parks.OrderBy(park => park.Reference))
+            _parks.Add(park);
+
+        PopulateProvinceSelector();
         ClearRoute();
         ApplyFilter();
         ParksGrid.SelectedItem = null;
@@ -204,12 +247,20 @@ public partial class MainWindow : Window
         };
 
         _viewSource.View.Refresh();
+            return matchesFilter && matchesSearch && isPlannedStop && MatchesSelectedProvinces(park);
+        };
+
+        _viewSource.View.Refresh();
+        RebuildParkMarkers();
         string mode = _routePlanningMode ? " planned stops" : " parks";
         StatusText.Text = $"Showing {_viewSource.View.Cast<object>().Count():N0}{mode} of {_parks.Count:N0} parks";
     }
 
     private void AllButton_Click(object sender, RoutedEventArgs e)
     {
+        ClearParkSelection();
+        NeverButton.IsChecked = false;
+        RareButton.IsChecked = false;
         _filterMode = FilterMode.All;
         ApplyFilter();
     }
@@ -230,6 +281,70 @@ public partial class MainWindow : Window
 
     private void AboutButton_Click(object sender, RoutedEventArgs e)
     {
+    {
+        ClearParkSelection();
+        if (NeverButton.IsChecked == true)
+        {
+            RareButton.IsChecked = false;
+            _filterMode = FilterMode.NeverActivated;
+        }
+        else
+        {
+            _filterMode = FilterMode.All;
+        }
+
+        ApplyFilter();
+    }
+
+    private void RareButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        if (RareButton.IsChecked == true)
+        {
+            NeverButton.IsChecked = false;
+            _filterMode = FilterMode.Rare;
+        }
+        else
+        {
+            _filterMode = FilterMode.All;
+        }
+
+        ApplyFilter();
+    }
+
+    private void ProvinceButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        ProvincePopup.IsOpen = !ProvincePopup.IsOpen;
+    }
+
+    private void AllProvincesButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        ProvinceListBox.SelectedItems.Clear();
+        ProvincePopup.IsOpen = false;
+    }
+
+    private void ProvinceListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ClearParkSelection();
+        _selectedProvinceCodes.Clear();
+        foreach (ProvinceOption province in ProvinceListBox.SelectedItems)
+            _selectedProvinceCodes.Add(province.Code);
+
+        UpdateProvinceButtonText();
+        ApplyFilter();
+    }
+
+    private void ZoomAllButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
+        ZoomToAllParks();
+    }
+
+    private void AboutButton_Click(object sender, RoutedEventArgs e)
+    {
+        ClearParkSelection();
         var assembly = Assembly.GetExecutingAssembly();
         string version = assembly.GetName().Version?.ToString(3) ?? "Unknown";
         string compileDate = File.GetLastWriteTime(assembly.Location).ToString("yyyy-MM-dd HH:mm");
@@ -240,6 +355,8 @@ public partial class MainWindow : Window
             $"Compiled: {compileDate}\n\n" +
             "Created by: VA6DM\n" +
             "Email: va6dm@dmnet.ca\n\n" +
+            "Copyright © 2026 VA6DM\n" +
+            "Licensed under the GNU General Public License v3.0 or later.\n\n" +
             $"Parks data: {_parkDataService.GetDataSourceDescription()}\n" +
             "Map data: OpenStreetMap\n" +
             "Park data: Parks on the Air",
@@ -546,6 +663,567 @@ public partial class MainWindow : Window
         try
         {
             Process.Start(new ProcessStartInfo { FileName = park.GoogleMapsUrl, UseShellExecute = true });
+            ApplyPlannedRoute(route, corridorKm);
+        }
+        catch (Exception ex) when (IsSecureConnectionFailure(ex))
+        {
+            var result = MessageBox.Show(
+                "This PC cannot validate the secure connection used for routing.\n\n"
+                + "Try Legacy Windows Compatibility Mode? It uses public mapping services without HTTPS, so use it only on a trusted network.\n\n"
+                + "The preferred fix is to correct the PC's date/time and install Windows certificate updates.",
+                "Secure connection unavailable",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+
+            try
+            {
+                var route = await _routingService.PlanRouteAsync(
+                    RouteStartBox.Text,
+                    RouteDestinationBox.Text,
+                    corridorKm,
+                    useLegacyCompatibilityMode: true);
+                ApplyPlannedRoute(route, corridorKm);
+            }
+            catch (Exception compatibilityException)
+            {
+                MessageBox.Show(compatibilityException.GetBaseException().Message, "Unable to Plan Route", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            var detail = ex.GetBaseException().Message;
+            var message = ex is HttpRequestException && detail.Contains("SSL", StringComparison.OrdinalIgnoreCase)
+                ? "Windows could not establish a secure connection to the online routing service.\n\n"
+                  + "Check that the computer's date and time are correct, then install the latest Windows updates (including certificate updates) and try again.\n\n"
+                  + $"Technical detail: {detail}"
+                : ex.Message;
+
+            MessageBox.Show(message, "Unable to Plan Route", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            PlanRouteButton.IsEnabled = true;
+            PlanRouteButton.Content = "Plan Route";
+        }
+    }
+
+    private void ApplyPlannedRoute(RoutePlan route, double corridorKm)
+    {
+        var stops = _routingService.FindStopsAlongRoute(route, _parks);
+        _activeRoute = route;
+        SetRouteStops(stops);
+        _plannedReferences.Clear();
+        foreach (var stop in stops)
+            _plannedReferences.Add(stop.Reference);
+        _routePlanningMode = true;
+        _showNonRouteParks = false;
+        ShowNonRouteParksToggle.IsChecked = false;
+        RebuildParkMarkers();
+        ApplyFilter();
+        UpdateParkDetails(_selectedPark);
+        DrawRoute(route);
+
+        StatusText.Text = $"Route: {route.DistanceKm:N0} km, {route.DurationMinutes / 60d:N1} hours; {stops.Count:N0} parks within {corridorKm:N0} km of the route";
+    }
+
+    private static bool IsSecureConnectionFailure(Exception exception)
+    {
+        var message = exception.ToString();
+        return message.Contains("SSL", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("certificate", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("authentication failed", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ClearRouteButton_Click(object sender, RoutedEventArgs e) => ClearRoute();
+
+    private async void CheckWorkedParksButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_routePlanningMode || _routeStops.Count == 0)
+        {
+            MessageBox.Show("Plan a route first.", "Check Worked Parks", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        string callsign = CallsignBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(callsign))
+        {
+            MessageBox.Show("Enter your callsign first.", "Check Worked Parks", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        CheckWorkedParksButton.IsEnabled = false;
+        CheckWorkedParksButton.Content = "Checking…";
+        var progress = new Progress<string>(message => StatusText.Text = message);
+
+        try
+        {
+            var workedReferences = await _potaApiService.FindActivatedParkReferencesAsync(
+                callsign,
+                _routeStops.Select(stop => stop.Park),
+                progress);
+
+            foreach (var stop in _routeStops)
+                stop.Park.MyActivations = workedReferences.Contains(stop.Reference) ? 1 : 0;
+
+            RebuildParkMarkers();
+            StatusText.Text = $"Checked {callsign.ToUpperInvariant()}: {workedReferences.Count:N0} of {_routeStops.Count:N0} planned parks already activated.";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Unable to open Google Maps.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void ExportButton_Click(object sender, RoutedEventArgs e)
+    {
+        var parks = _viewSource.View.Cast<Park>().ToList();
+        bool exportRoute = _routePlanningMode && _activeRoute is not null;
+
+        if (!exportRoute && parks.Count == 0)
+        {
+            MessageBox.Show("There are no parks to export.", "Export Excel", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+            MessageBox.Show(
+                $"Could not check POTA activation history.\n\n{ex.GetBaseException().Message}",
+                "Check Worked Parks",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            CheckWorkedParksButton.IsEnabled = true;
+            CheckWorkedParksButton.Content = "Check Worked Parks";
+        }
+    }
+
+    private void ShowNonRouteParksToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        _showNonRouteParks = ShowNonRouteParksToggle.IsChecked == true;
+        if (!_showNonRouteParks)
+            ClearParkSelection();
+
+        RebuildParkMarkers();
+    }
+
+    private void ClearRoute()
+    {
+        _routePlanningMode = false;
+        _showNonRouteParks = false;
+        ShowNonRouteParksToggle.IsChecked = false;
+        _activeRoute = null;
+        _plannedReferences.Clear();
+        _routeLayer.Features = Array.Empty<IFeature>();
+        _routeStops.Clear();
+        UpdateRouteStopsHeader();
+        RebuildParkMarkers();
+        ApplyFilter();
+        UpdateParkDetails(_selectedPark);
+        ZoomToAllParks();
+    }
+
+    private void RouteStopsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (RouteStopsGrid.SelectedItem is not RouteStop stop)
+            return;
+
+        SelectPark(stop.Park);
+    }
+
+    private void ParksGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        SetSelectedPark(ParksGrid.SelectedItem as Park);
+    }
+
+    private void ParksGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_selectedPark is Park park)
+            OpenGoogleMaps(park);
+    }
+
+    private void GoogleMapsButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPark is Park park)
+            OpenGoogleMaps(park);
+    }
+
+    private void AddToRouteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPark is Park park)
+            AddParkToRoute(park);
+    }
+
+    private void RemoveFromRouteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPark is Park park)
+            RemoveParkFromRoute(park);
+    }
+
+    private void ParkMap_Info(object? sender, MapInfoEventArgs e)
+    {
+        var mapInfo = e.GetMapInfo(new[] { _parksLayer });
+        if (mapInfo?.Feature? ["Reference"] is not string reference)
+            return;
+
+        var park = _parks.FirstOrDefault(candidate => candidate.Reference == reference);
+        if (park is null)
+            return;
+
+        SelectPark(park);
+        e.Handled = true;
+    }
+
+    private void SelectPark(Park park)
+    {
+        bool visibleInGrid = _viewSource.View.Cast<Park>().Any(candidate => candidate.Reference == park.Reference);
+        if (visibleInGrid)
+        {
+            ParksGrid.SelectedItem = park;
+            ParksGrid.ScrollIntoView(park);
+        }
+        else
+        {
+            ParksGrid.SelectedItem = null;
+            SetSelectedPark(park);
+        }
+
+        if (_routePlanningMode && _activeRoute is not null && !_plannedReferences.Contains(park.Reference))
+        {
+            var stop = _routingService.CreateRouteStop(_activeRoute, park);
+            var result = MessageBox.Show(
+                $"{park.Reference} — {park.Name} is not in the planned route.\n\n" +
+                $"It is {stop.DistanceFromRouteKm:N1} km from the route. Add it anyway?",
+                "Add Park to Route",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+                AddParkToRoute(park);
+        }
+    }
+
+    private void AddParkToRoute(Park park)
+    {
+        if (_activeRoute is null || _plannedReferences.Contains(park.Reference))
+            return;
+
+        var stop = _routingService.CreateRouteStop(_activeRoute, park);
+        _plannedReferences.Add(stop.Reference);
+        SetRouteStops(_routeStops.Concat(new[] { stop }).ToList());
+        RebuildParkMarkers();
+        ApplyFilter();
+
+        ClearParkSelection();
+        DrawRoute(_activeRoute);
+        StatusText.Text = $"Added {park.Reference} to the planned route ({stop.DistanceFromRouteKm:N1} km from the route).";
+    }
+
+    private void RemoveParkFromRoute(Park park)
+    {
+        if (_activeRoute is null || !_plannedReferences.Contains(park.Reference))
+            return;
+
+        var result = MessageBox.Show(
+            $"Remove {park.Reference} — {park.Name} from the planned route?",
+            "Remove Park from Route",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes)
+            return;
+
+        var remainingStops = _routeStops
+            .Where(stop => !string.Equals(stop.Reference, park.Reference, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        _plannedReferences.Remove(park.Reference);
+        SetRouteStops(remainingStops);
+        RebuildParkMarkers();
+        ApplyFilter();
+        ClearParkSelection();
+        DrawRoute(_activeRoute);
+        StatusText.Text = $"Removed {park.Reference} from the planned route.";
+    }
+
+    private void RebuildParkMarkers()
+    {
+        var features = new List<IFeature>();
+
+        foreach (var park in _parks)
+        {
+            if (!_routePlanningMode && !MatchesSelectedProvinces(park))
+                continue;
+
+            if (_routePlanningMode && !_showNonRouteParks && !_plannedReferences.Contains(park.Reference))
+                continue;
+
+            var position = ToMapPoint(park);
+            var feature = new PointFeature(position)
+            {
+                ["Reference"] = park.Reference
+            };
+
+            bool isWorkedRouteStop = _routePlanningMode
+                && _plannedReferences.Contains(park.Reference)
+                && park.MyActivations > 0;
+
+            if (isWorkedRouteStop)
+            {
+                feature.Styles.Add(CreateWorkedRouteStopLabelStyle());
+            }
+            else
+            {
+                feature.Styles.Add(CreateParkMarkerStyle(GetParkMarkerColor(park)));
+            }
+            features.Add(feature);
+        }
+
+        _parksLayer.Features = features;
+        _map.Refresh();
+    }
+
+    private void UpdateSelectedMarker(Park? park)
+    {
+        if (park is null || (_routePlanningMode && !_showNonRouteParks && !_plannedReferences.Contains(park.Reference)))
+        {
+            _selectedParkLayer.Features = Array.Empty<IFeature>();
+        }
+        else
+        {
+            var position = ToMapPoint(park);
+            var feature = new PointFeature(position);
+            feature.Styles.Add(CreateSelectedParkMarkerStyle());
+            _selectedParkLayer.Features = new[] { feature };
+        }
+
+        _map.Refresh();
+    }
+
+    private void DrawRoute(RoutePlan route)
+    {
+        var geometryFactory = new GeometryFactory(new PrecisionModel(), 3857);
+        var coordinates = route.Points
+            .Select(point => ToMapPoint(point))
+            .Select(point => new Coordinate(point.X, point.Y))
+            .ToArray();
+
+        var feature = new GeometryFeature(geometryFactory.CreateLineString(coordinates));
+        feature.Styles.Add(new VectorStyle
+        {
+            Line = new Pen(Color.ForestGreen, 4)
+        });
+
+        _routeLayer.Features = new[] { feature };
+        _map.Refresh();
+
+        var extent = feature.Extent;
+        if (extent is not null)
+            _map.Navigator.ZoomToBox(extent, MBoxFit.Fit, 300);
+    }
+
+    private Color GetParkMarkerColor(Park park)
+    {
+        if (_routePlanningMode && _plannedReferences.Contains(park.Reference))
+            return Color.Blue;
+
+        if (_filterMode == FilterMode.NeverActivated
+            && park.Activations == 0
+            && MatchesSelectedProvinces(park))
+            return Color.ForestGreen;
+
+        if (_filterMode == FilterMode.Rare
+            && park.Activations <= 5
+            && MatchesSelectedProvinces(park))
+            return Color.Gold;
+
+        return _routePlanningMode ? Color.Gray : Color.Blue;
+    }
+
+    private static SymbolStyle CreateParkMarkerStyle(Color color) => new()
+    {
+        SymbolScale = 0.7,
+        Fill = new Brush(color),
+        Outline = new Pen(Color.White, 1)
+    };
+
+    private static SymbolStyle CreateSelectedParkMarkerStyle() => new()
+    {
+        SymbolScale = 1.25,
+        Fill = new Brush(Color.Red),
+        Outline = new Pen(Color.White, 2)
+    };
+
+    private static LabelStyle CreateWorkedRouteStopLabelStyle() => new()
+    {
+        Text = "\u2714",
+        ForeColor = Color.Blue,
+        Font = new Font { FontFamily = "Segoe UI Symbol", Size = 18, Bold = true },
+        HorizontalAlignment = LabelStyle.HorizontalAlignmentEnum.Center,
+        VerticalAlignment = LabelStyle.VerticalAlignmentEnum.Center
+    };
+
+    private void ZoomToPark(Park park)
+    {
+        var position = ToMapPoint(park);
+        _map.Navigator.CenterOnAndZoomTo(position, 150, 300);
+    }
+
+    private void ZoomToAllParks()
+    {
+        if (_parks.Count == 0)
+            return;
+
+        var zoomParks = _routePlanningMode && _routeStops.Count > 0
+            ? _routeStops.Select(stop => stop.Park)
+            : _parks.Where(MatchesSelectedProvinces);
+
+        var points = zoomParks
+            .Select(ToMapPoint)
+            .ToList();
+
+        if (points.Count == 0)
+            return;
+
+        double minX = points.Min(point => point.X);
+        double minY = points.Min(point => point.Y);
+        double maxX = points.Max(point => point.X);
+        double maxY = points.Max(point => point.Y);
+
+        if (minX == maxX && minY == maxY)
+        {
+            _map.Navigator.CenterOnAndZoomTo(points[0], 150, 300);
+            return;
+        }
+
+        double paddingX = Math.Max((maxX - minX) * 0.08, 5_000);
+        double paddingY = Math.Max((maxY - minY) * 0.08, 5_000);
+        var extent = new MRect(minX - paddingX, minY - paddingY, maxX + paddingX, maxY + paddingY);
+        _map.Navigator.ZoomToBox(extent, MBoxFit.Fit, 300);
+    }
+
+    private static MPoint ToMapPoint(Park park)
+        => ToMapPoint(new RoutePoint(park.Latitude, park.Longitude));
+
+    private static MPoint ToMapPoint(RoutePoint point)
+    {
+        const double earthRadius = 6_378_137;
+        double latitude = Math.Clamp(point.Latitude, -85.05112878, 85.05112878);
+        double x = earthRadius * point.Longitude * Math.PI / 180d;
+        double y = earthRadius * Math.Log(Math.Tan(Math.PI / 4d + latitude * Math.PI / 360d));
+        return new MPoint(x, y);
+    }
+
+    private void UpdateParkDetails(Park? park)
+    {
+        ReferenceDetail.Text = park?.Reference ?? "—";
+        NameDetail.Text = park?.Name ?? "—";
+        GridDetail.Text = park?.Grid ?? "—";
+        ActivationsDetail.Text = park?.Activations.ToString("N0") ?? "—";
+        QsosDetail.Text = park?.QSOs.ToString("N0") ?? "—";
+        AttemptsDetail.Text = park?.Attempts.ToString("N0") ?? "—";
+        LatitudeDetail.Text = park?.Latitude.ToString("F5") ?? "—";
+        LongitudeDetail.Text = park?.Longitude.ToString("F5") ?? "—";
+        GoogleMapsButton.IsEnabled = park is not null;
+        AddToRouteButton.IsEnabled = _routePlanningMode
+            && park is not null
+            && !_plannedReferences.Contains(park.Reference);
+        RemoveFromRouteButton.IsEnabled = _routePlanningMode
+            && park is not null
+            && _plannedReferences.Contains(park.Reference);
+    }
+
+    private void SetSelectedPark(Park? park, bool zoomToPark = true)
+    {
+        _selectedPark = park;
+        UpdateParkDetails(park);
+        UpdateSelectedMarker(park);
+
+        if (park is not null && zoomToPark)
+            ZoomToPark(park);
+    }
+
+    private void ClearParkSelection()
+    {
+        ParksGrid.SelectedItem = null;
+        RouteStopsGrid.SelectedItem = null;
+        SetSelectedPark(null, zoomToPark: false);
+    }
+
+    private void SetRouteStops(IEnumerable<RouteStop> stops)
+    {
+        _routeStops.Clear();
+        foreach (var stop in stops.OrderBy(stop => stop.RoutePositionKm).ThenBy(stop => stop.DistanceFromRouteKm))
+            _routeStops.Add(stop);
+
+        UpdateRouteStopsHeader();
+    }
+
+    private void UpdateRouteStopsHeader() =>
+        RouteStopsGroup.Header = $"Route Stops ({_routeStops.Count:N0})";
+
+    private void PopulateProvinceSelector()
+    {
+        _provinceOptions.Clear();
+        foreach (string code in _parks
+                     .Select(GetProvinceCode)
+                     .Where(code => !string.IsNullOrWhiteSpace(code))
+                     .Distinct(StringComparer.OrdinalIgnoreCase)
+                     .OrderBy(code => GetProvinceName(code), StringComparer.OrdinalIgnoreCase))
+        {
+            _provinceOptions.Add(new ProvinceOption(code, GetProvinceName(code)));
+        }
+
+        _selectedProvinceCodes.Clear();
+        ProvinceListBox.SelectedItems.Clear();
+        UpdateProvinceButtonText();
+    }
+
+    private bool MatchesSelectedProvinces(Park park) =>
+        _selectedProvinceCodes.Count == 0 || _selectedProvinceCodes.Contains(GetProvinceCode(park));
+
+    private static string GetProvinceCode(Park park)
+    {
+        string location = park.LocationDescription?.Trim() ?? string.Empty;
+        return location.StartsWith("CA-", StringComparison.OrdinalIgnoreCase) && location.Length >= 5
+            ? location[3..]
+            : string.Empty;
+    }
+
+    private static string GetProvinceName(string code) => code.ToUpperInvariant() switch
+    {
+        "AB" => "Alberta",
+        "BC" => "British Columbia",
+        "MB" => "Manitoba",
+        "NB" => "New Brunswick",
+        "NL" => "Newfoundland and Labrador",
+        "NS" => "Nova Scotia",
+        "NT" => "Northwest Territories",
+        "NU" => "Nunavut",
+        "ON" => "Ontario",
+        "PE" => "Prince Edward Island",
+        "QC" => "Quebec",
+        "SK" => "Saskatchewan",
+        "YT" => "Yukon",
+        _ => code
+    };
+
+    private void UpdateProvinceButtonText()
+    {
+        ProvinceButton.Content = _selectedProvinceCodes.Count switch
+        {
+            0 => "Provinces: All Canada",
+            1 => $"Province: {GetProvinceName(_selectedProvinceCodes.Single())}",
+            _ => $"Provinces: {_selectedProvinceCodes.Count} selected"
+        };
+    }
+
+    private static void OpenGoogleMaps(Park park)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = park.GoogleMapsUrl, UseShellExecute = true });
         }
         catch
         {
@@ -556,6 +1234,8 @@ public partial class MainWindow : Window
     private void ExportButton_Click(object sender, RoutedEventArgs e)
     {
         var parks = _viewSource.View.Cast<Park>().ToList();
+        // Export a snapshot of the stops that remain after any manual additions/removals.
+        var routeStops = _routeStops.ToList();
         bool exportRoute = _routePlanningMode && _activeRoute is not null;
 
         if (!exportRoute && parks.Count == 0)
@@ -589,6 +1269,12 @@ public partial class MainWindow : Window
                     _activeRoute.DurationMinutes);
 
                 MessageBox.Show($"Successfully exported {_routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                    routeStops,
+                    RouteStartBox.Text,
+                    RouteDestinationBox.Text,
+                    _activeRoute!);
+
+                MessageBox.Show($"Successfully exported {routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {

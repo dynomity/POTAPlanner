@@ -1,6 +1,7 @@
 using POTAPlanner.Models;
 using System.Globalization;
 using System.Net.Http;
+using System.Security.Authentication;
 using System.Text.Json;
 
 namespace POTAPlanner.Services;
@@ -10,6 +11,11 @@ public sealed class RoutingService
     private static readonly HttpClient Client = CreateHttpClient();
 
     public async Task<RoutePlan> PlanRouteAsync(string startInput, string destinationInput, double maximumDistanceFromRouteKm)
+    public async Task<RoutePlan> PlanRouteAsync(
+        string startInput,
+        string destinationInput,
+        double maximumDistanceFromRouteKm,
+        bool useLegacyCompatibilityMode = false)
     {
         if (maximumDistanceFromRouteKm <= 0)
             throw new ArgumentOutOfRangeException(nameof(maximumDistanceFromRouteKm), "Distance from route must be greater than zero.");
@@ -19,6 +25,12 @@ public sealed class RoutingService
 
         string coordinates = string.Join(";", ToCoordinateString(start), ToCoordinateString(destination));
         string url = $"https://router.project-osrm.org/route/v1/driving/{coordinates}?overview=full&geometries=geojson";
+        var start = await ResolveLocationAsync(startInput, useLegacyCompatibilityMode);
+        var destination = await ResolveLocationAsync(destinationInput, useLegacyCompatibilityMode);
+
+        string coordinates = string.Join(";", ToCoordinateString(start), ToCoordinateString(destination));
+        string protocol = useLegacyCompatibilityMode ? "http" : "https";
+        string url = $"{protocol}://router.project-osrm.org/route/v1/driving/{coordinates}?overview=full&geometries=geojson";
 
         using var response = await Client.GetAsync(url);
         response.EnsureSuccessStatusCode();
@@ -68,12 +80,21 @@ public sealed class RoutingService
     }
 
     private static async Task<RoutePoint> ResolveLocationAsync(string input)
+            RoutePositionKm = nearest.RoutePositionKm,
+            RouteDistanceKm = route.DistanceKm
+        };
+    }
+
+    private static async Task<RoutePoint> ResolveLocationAsync(string input, bool useLegacyCompatibilityMode)
     {
         if (TryParseCoordinates(input, out var point))
             return point;
 
         if (string.IsNullOrWhiteSpace(input))
             throw new InvalidOperationException("Enter a start and destination location.");
+
+        if (useLegacyCompatibilityMode)
+            return await ResolveLocationWithLegacyServiceAsync(input);
 
         string url = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q="
             + Uri.EscapeDataString(input);
@@ -89,6 +110,28 @@ public sealed class RoutingService
         return new RoutePoint(
             double.Parse(result.GetProperty("lat").GetString()!, CultureInfo.InvariantCulture),
             double.Parse(result.GetProperty("lon").GetString()!, CultureInfo.InvariantCulture));
+    }
+
+    private static async Task<RoutePoint> ResolveLocationWithLegacyServiceAsync(string input)
+    {
+        string url = "http://geocoding-api.open-meteo.com/v1/search?count=1&language=en&name="
+            + Uri.EscapeDataString(input);
+
+        using var response = await Client.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+        if (!document.RootElement.TryGetProperty("results", out var results)
+            || results.ValueKind != JsonValueKind.Array
+            || results.GetArrayLength() == 0)
+        {
+            throw new InvalidOperationException($"Could not find '{input}'. Try a city and province, or use latitude, longitude.");
+        }
+
+        var result = results[0];
+        return new RoutePoint(
+            result.GetProperty("latitude").GetDouble(),
+            result.GetProperty("longitude").GetDouble());
     }
 
     private static bool TryParseCoordinates(string input, out RoutePoint point)
@@ -168,6 +211,18 @@ public sealed class RoutingService
     private static HttpClient CreateHttpClient()
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        // Explicitly enable the TLS versions supported by the public routing services.
+        // This avoids relying on older Windows TLS defaults while preserving normal
+        // certificate validation.
+        var handler = new SocketsHttpHandler
+        {
+            SslOptions =
+            {
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
+            }
+        };
+
+        var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("POTAPlanner/0.6 (personal trip planning application)");
         return client;
     }

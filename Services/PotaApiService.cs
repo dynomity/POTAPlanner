@@ -47,6 +47,47 @@ public sealed class PotaApiService
         return parks;
     }
 
+    public async Task<HashSet<string>> FindActivatedParkReferencesAsync(
+        string callsign,
+        IEnumerable<Park> parks,
+        IProgress<string>? progress = null)
+    {
+        string normalizedCallsign = NormalizeCallsign(callsign);
+        if (string.IsNullOrWhiteSpace(normalizedCallsign))
+            throw new InvalidOperationException("Enter your callsign first.");
+
+        var references = parks
+            .Select(park => park.Reference)
+            .Where(reference => !string.IsNullOrWhiteSpace(reference))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var activatedReferences = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var index = 0; index < references.Count; index++)
+        {
+            string reference = references[index];
+            progress?.Report($"Checking {index + 1:N0} of {references.Count:N0}: {reference}");
+
+            string url = $"https://api.pota.app/park/activations/{Uri.EscapeDataString(reference)}?count=all";
+            using var response = await Client.GetAsync(url);
+            response.EnsureSuccessStatusCode();
+
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStreamAsync());
+            var activations = GetActivationsElement(document.RootElement);
+            if (activations.EnumerateArray().Any(activation =>
+                    NormalizeCallsign(GetString(activation, "activeCallsign")) == normalizedCallsign))
+            {
+                activatedReferences.Add(reference);
+            }
+
+            // Keep requests to POTA's public API deliberately modest.
+            if (index < references.Count - 1)
+                await Task.Delay(350);
+        }
+
+        return activatedReferences;
+    }
+
     private static JsonElement GetParksElement(JsonElement root)
     {
         if (root.ValueKind == JsonValueKind.Array)
@@ -56,6 +97,25 @@ public sealed class PotaApiService
             return parks;
 
         throw new InvalidOperationException("The POTA response did not contain a park list.");
+    }
+
+    private static JsonElement GetActivationsElement(JsonElement root)
+    {
+        if (root.ValueKind == JsonValueKind.Array)
+            return root;
+
+        if (TryGetProperty(root, "activations", out var activations)
+            && activations.ValueKind == JsonValueKind.Array)
+            return activations;
+
+        throw new InvalidOperationException("The POTA response did not contain activation history for this park.");
+    }
+
+    private static string NormalizeCallsign(string callsign)
+    {
+        string normalized = callsign.Trim().ToUpperInvariant();
+        int suffixIndex = normalized.IndexOf('/');
+        return suffixIndex >= 0 ? normalized[..suffixIndex] : normalized;
     }
 
     private static string GetString(JsonElement item, string propertyName)
