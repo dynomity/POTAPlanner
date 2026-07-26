@@ -118,6 +118,10 @@
 
         <Style TargetType="{x:Type DataGridCell}">
             <Style.Triggers>
+                <DataTrigger Binding="{Binding MyActivations}" Value="1">
+                    <Setter Property="Background" Value="#FFDCEBFA"/>
+                    <Setter Property="BorderBrush" Value="#FF9BC2E6"/>
+                </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="#FFFFF4B0"/>
                     <Setter Property="Foreground" Value="Black"/>
@@ -128,6 +132,10 @@
 
         <Style TargetType="{x:Type DataGridRow}">
             <Style.Triggers>
+                <DataTrigger Binding="{Binding MyActivations}" Value="1">
+                    <Setter Property="Background" Value="#FFDCEBFA"/>
+                    <Setter Property="Foreground" Value="Black"/>
+                </DataTrigger>
                 <Trigger Property="IsSelected" Value="True">
                     <Setter Property="Background" Value="#FFFFF4B0"/>
                     <Setter Property="Foreground" Value="Black"/>

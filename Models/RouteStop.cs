@@ -10,6 +10,7 @@ public class RouteStop
     public string Reference => Park.Reference;
     public string Name => Park.Name;
     public int Activations => Park.Activations;
+    public int MyActivations => Park.MyActivations;
     public string DistanceFromRoute => $"{DistanceFromRouteKm:N1} km";
     public string DistanceFromStart => $"{RoutePositionKm:N1} km";
     public string DistanceToDestination => $"{Math.Max(0, RouteDistanceKm - RoutePositionKm):N1} km";

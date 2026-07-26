@@ -209,14 +209,15 @@ public partial class MainWindow : Window
                 || park.Name.Contains(search, StringComparison.OrdinalIgnoreCase)
                 || park.Grid.Contains(search, StringComparison.OrdinalIgnoreCase);
 
-            bool isPlannedStop = !_routePlanningMode || _plannedReferences.Contains(park.Reference);
-            return matchesFilter && matchesSearch && isPlannedStop && MatchesSelectedProvinces(park);
+            // Route planning limits the map by default, not the main park list.
+            // Keep the full filtered park list available for browsing and adding
+            // extra stops to the route.
+            return matchesFilter && matchesSearch && MatchesSelectedProvinces(park);
         };
 
         _viewSource.View.Refresh();
         RebuildParkMarkers();
-        string mode = _routePlanningMode ? " planned stops" : " parks";
-        StatusText.Text = $"Showing {_viewSource.View.Cast<object>().Count():N0}{mode} of {_parks.Count:N0} parks";
+        StatusText.Text = $"Showing {_viewSource.View.Cast<object>().Count():N0} parks of {_parks.Count:N0}";
     }
 
     private void AllButton_Click(object sender, RoutedEventArgs e)
@@ -442,6 +443,10 @@ public partial class MainWindow : Window
             foreach (var stop in _routeStops)
                 stop.Park.MyActivations = workedReferences.Contains(stop.Reference) ? 1 : 0;
 
+            // Park does not raise property-change notifications, so refresh both
+            // lists to apply the worked-park row highlighting immediately.
+            ParksGrid.Items.Refresh();
+            RouteStopsGrid.Items.Refresh();
             RebuildParkMarkers();
             StatusText.Text = $"Checked {callsign.ToUpperInvariant()}: {workedReferences.Count:N0} of {_routeStops.Count:N0} planned parks already activated.";
         }
