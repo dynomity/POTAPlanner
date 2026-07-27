@@ -1,5 +1,4 @@
 using Mapsui;
-using Mapsui.Features;
 using Mapsui.Layers;
 using Mapsui.Nts;
 using Mapsui.Styles;
@@ -11,12 +10,13 @@ using POTAPlanner.Services;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.Net.Http;
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Media.Animation;
 
 namespace POTAPlanner;
 
@@ -431,6 +431,7 @@ public partial class MainWindow : Window
 
         CheckWorkedParksButton.IsEnabled = false;
         CheckWorkedParksButton.Content = "Checking…";
+        SetWorkedParksBusy(true);
         var progress = new Progress<string>(message => StatusText.Text = message);
 
         try
@@ -460,8 +461,28 @@ public partial class MainWindow : Window
         }
         finally
         {
+            SetWorkedParksBusy(false);
             CheckWorkedParksButton.IsEnabled = true;
             CheckWorkedParksButton.Content = "Check Worked Parks";
+        }
+    }
+
+    private void SetWorkedParksBusy(bool isBusy)
+    {
+        BusyOverlay.Visibility = isBusy ? Visibility.Visible : Visibility.Collapsed;
+
+        if (isBusy)
+        {
+            var spin = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(0.85))
+            {
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            BusySpinnerRotation.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, spin);
+        }
+        else
+        {
+            BusySpinnerRotation.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+            BusySpinnerRotation.Angle = 0;
         }
     }
 
@@ -537,6 +558,18 @@ public partial class MainWindow : Window
             OpenGoogleMaps(park);
     }
 
+    private void PotaReferenceLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPark is not Park park)
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = $"https://pota.app/#/park/{Uri.EscapeDataString(park.Reference)}",
+            UseShellExecute = true
+        });
+    }
+
     private void AddToRouteButton_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedPark is Park park)
@@ -552,7 +585,7 @@ public partial class MainWindow : Window
     private void ParkMap_Info(object? sender, MapInfoEventArgs e)
     {
         var mapInfo = e.GetMapInfo(new[] { _parksLayer });
-        if (mapInfo?.Feature? ["Reference"] is not string reference)
+        if (mapInfo?.Feature?["Reference"] is not string reference)
             return;
 
         var park = _parks.FirstOrDefault(candidate => candidate.Reference == reference);
@@ -820,6 +853,7 @@ public partial class MainWindow : Window
     private void UpdateParkDetails(Park? park)
     {
         ReferenceDetail.Text = park?.Reference ?? "—";
+        PotaReferenceLink.IsEnabled = park is not null;
         NameDetail.Text = park?.Name ?? "—";
         GridDetail.Text = park?.Grid ?? "—";
         ActivationsDetail.Text = park?.Activations.ToString("N0") ?? "—";

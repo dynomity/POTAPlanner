@@ -9,6 +9,7 @@
         MinHeight="620"
         MinWidth="1050">
 
+    <Grid>
     <DockPanel Margin="10">
 
         <StatusBar DockPanel.Dock="Bottom">
@@ -282,7 +283,14 @@
                     <TextBlock FontSize="18" FontWeight="Bold" Margin="0,0,0,15" Text="Park Details"/>
 
                     <TextBlock FontWeight="Bold" Text="Reference"/>
-                    <TextBlock Name="ReferenceDetail" Margin="0,0,0,10" Text="—"/>
+                    <TextBlock Margin="0,0,0,10">
+                        <Hyperlink Name="PotaReferenceLink"
+                                   IsEnabled="False"
+                                   ToolTip="Open this park on the Parks on the Air website"
+                                   Click="PotaReferenceLink_Click">
+                            <Run Name="ReferenceDetail" Text="—"/>
+                        </Hyperlink>
+                    </TextBlock>
 
                     <TextBlock FontWeight="Bold" Text="Name"/>
                     <TextBlock Name="NameDetail" Margin="0,0,0,10" Text="—" TextWrapping="Wrap"/>
@@ -326,4 +334,44 @@
             </Border>
         </Grid>
     </DockPanel>
+
+    <Border Name="BusyOverlay"
+            Visibility="Collapsed"
+            Background="#66000000"
+            Panel.ZIndex="100">
+        <Border Background="#FF2F3E4C"
+                BorderBrush="#FF8CB5D6"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="28,22"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+            <StackPanel HorizontalAlignment="Center">
+                <Grid Width="52" Height="52" HorizontalAlignment="Center" Margin="0,0,0,14">
+                    <Ellipse Width="44"
+                             Height="44"
+                             Stroke="#FFEAF6FF"
+                             StrokeThickness="5"
+                             StrokeDashArray="2,1"
+                             StrokeDashCap="Round">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform x:Name="BusySpinnerRotation"
+                                             CenterX="22"
+                                             CenterY="22"/>
+                        </Ellipse.RenderTransform>
+                    </Ellipse>
+                </Grid>
+                <TextBlock Text="Checking worked parks…"
+                           Foreground="White"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Text="Please wait"
+                           Foreground="#FFD6E7F5"
+                           Margin="0,6,0,0"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Grid>
 </Window>
