@@ -1,4 +1,5 @@
 using Mapsui;
+using Mapsui.Features;
 using Mapsui.Layers;
 using Mapsui.Nts;
 using Mapsui.Styles;
@@ -7,11 +8,12 @@ using Microsoft.Win32;
 using NetTopologySuite.Geometries;
 using POTAPlanner.Models;
 using POTAPlanner.Services;
+using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
-using System.IO;
 using System.Net.Http;
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -67,9 +69,31 @@ public partial class MainWindow : Window
 
         StatusText.Text = "No parks loaded";
         Loaded += MainWindow_Loaded;
+        Closing += MainWindow_Closing;
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e) => LoadBundledParks();
+
+    private void MainWindow_Closing(object? sender, CancelEventArgs e)
+    {
+        if (!_routePlanningMode || _activeRoute is null || _routeStops.Count == 0)
+            return;
+
+        var choice = MessageBox.Show(
+            "A planned route is still open. Export it to Excel before closing?",
+            "Save Planned Route",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+
+        if (choice == MessageBoxResult.Cancel)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        if (choice == MessageBoxResult.Yes)
+            e.Cancel = !ExportPlannedRoute();
+    }
 
     private void OpenButton_Click(object sender, RoutedEventArgs e)
     {
@@ -585,7 +609,7 @@ public partial class MainWindow : Window
     private void ParkMap_Info(object? sender, MapInfoEventArgs e)
     {
         var mapInfo = e.GetMapInfo(new[] { _parksLayer });
-        if (mapInfo?.Feature?["Reference"] is not string reference)
+        if (mapInfo?.Feature? ["Reference"] is not string reference)
             return;
 
         var park = _parks.FirstOrDefault(candidate => candidate.Reference == reference);
@@ -969,12 +993,15 @@ public partial class MainWindow : Window
 
     private void ExportButton_Click(object sender, RoutedEventArgs e)
     {
-        var parks = _viewSource.View.Cast<Park>().ToList();
-        // Export a snapshot of the stops that remain after any manual additions/removals.
-        var routeStops = _routeStops.ToList();
-        bool exportRoute = _routePlanningMode && _activeRoute is not null;
+        if (_routePlanningMode && _activeRoute is not null)
+        {
+            ExportPlannedRoute();
+            return;
+        }
 
-        if (!exportRoute && parks.Count == 0)
+        var parks = _viewSource.View.Cast<Park>().ToList();
+
+        if (parks.Count == 0)
         {
             MessageBox.Show("There are no parks to export.", "Export Excel", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
@@ -984,9 +1011,7 @@ public partial class MainWindow : Window
         {
             Filter = "Excel Workbook (*.xlsx)|*.xlsx",
             DefaultExt = "xlsx",
-            FileName = exportRoute
-                ? $"POTA_Route_{ToFileNamePart(RouteStartBox.Text)}_to_{ToFileNamePart(RouteDestinationBox.Text)}_{DateTime.Now:yyyy-MM-dd}.xlsx"
-                : $"POTA_Parks_{DateTime.Now:yyyy-MM-dd}.xlsx"
+            FileName = $"POTA_Parks_{DateTime.Now:yyyy-MM-dd}.xlsx"
         };
 
         if (dialog.ShowDialog() != true)
@@ -994,26 +1019,48 @@ public partial class MainWindow : Window
 
         try
         {
-            if (exportRoute)
-            {
-                _excelService.ExportRoute(
-                    dialog.FileName,
-                    routeStops,
-                    RouteStartBox.Text,
-                    RouteDestinationBox.Text,
-                    _activeRoute!);
-
-                MessageBox.Show($"Successfully exported {routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            else
-            {
-                _excelService.Export(dialog.FileName, parks);
-                MessageBox.Show($"Successfully exported {parks.Count} parks.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+            _excelService.Export(dialog.FileName, parks);
+            MessageBox.Show($"Successfully exported {parks.Count} parks.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
             MessageBox.Show(ex.Message, "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private bool ExportPlannedRoute()
+    {
+        if (_activeRoute is null || _routeStops.Count == 0)
+            return false;
+
+        var dialog = new SaveFileDialog
+        {
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            DefaultExt = "xlsx",
+            FileName = $"POTA_Route_{ToFileNamePart(RouteStartBox.Text)}_to_{ToFileNamePart(RouteDestinationBox.Text)}_{DateTime.Now:yyyy-MM-dd}.xlsx"
+        };
+
+        if (dialog.ShowDialog() != true)
+            return false;
+
+        try
+        {
+            // Export a snapshot of the stops that remain after any manual additions/removals.
+            var routeStops = _routeStops.ToList();
+            _excelService.ExportRoute(
+                dialog.FileName,
+                routeStops,
+                RouteStartBox.Text,
+                RouteDestinationBox.Text,
+                _activeRoute);
+
+            MessageBox.Show($"Successfully exported {routeStops.Count} planned route stops.", "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
         }
     }
 
